@@ -48,9 +48,9 @@ function pickLargestPhoto(
 
 function getSystemPrompt() {
   return [
-    "РўС‹ РґСЂСѓР¶РµР»СЋР±РЅС‹Р№ Р°СЃСЃРёСЃС‚РµРЅС‚ РІ Telegram.",
-    "РћС‚РІРµС‡Р°Р№ РєСЂР°С‚РєРѕ Рё РїРѕ РґРµР»Сѓ.",
-    "Р•СЃР»Рё РїРѕР»СЊР·РѕРІР°С‚РµР»СЊ РїСЂРёСЃР»Р°Р» РіРѕР»РѕСЃ, РѕС‚РІРµС‡Р°Р№ С‚РµРєСЃС‚РѕРј Рё РіРѕР»РѕСЃРѕРј.",
+    "Ты дружелюбный ассистент в Telegram.",
+    "Отвечай кратко и по делу.",
+    "Если пользователь прислал голос, отвечай текстом и голосом.",
   ].join(" ");
 }
 
@@ -181,7 +181,7 @@ async function handleDocument(
 
   await sendMessage(
     chatId,
-    `Р”РѕРєСѓРјРµРЅС‚ СЃРѕС…СЂР°РЅРµРЅ. РЎСЃС‹Р»РєР°: ${publicUrl}response.output_text?.trim() || nРњРѕР¶РЅРѕ Р·Р°РґР°РІР°С‚СЊ РІРѕРїСЂРѕСЃС‹ РїРѕ СЃРѕРґРµСЂР¶РёРјРѕРјСѓ.`
+    `Документ сохранен. Ссылка: ${publicUrl}\nМожно задавать вопросы по содержимому.`
   );
 }
 
@@ -224,7 +224,7 @@ export async function POST(request: Request) {
       } catch (err) {
         await sendMessage(
           chatId,
-          "РќРµ СѓРґР°Р»РѕСЃСЊ СЂР°СЃРїРѕР·РЅР°С‚СЊ РіРѕР»РѕСЃ. РџРѕРїСЂРѕР±СѓР№С‚Рµ РѕС‚РїСЂР°РІРёС‚СЊ Р°СѓРґРёРѕ РІ С„РѕСЂРјР°С‚Рµ mp3, wav РёР»Рё m4a."
+          "Не удалось распознать голос. Попробуйте отправить аудио в формате mp3, wav или m4a."
         );
         throw err;
       }
@@ -237,15 +237,18 @@ export async function POST(request: Request) {
         throw new Error("Telegram file_path missing for photo.");
       }
       const imageUrl = getFileUrl(fileInfo.file_path);
-      await respondWithModel(chatId, "РћРїРёС€Рё РёР·РѕР±СЂР°Р¶РµРЅРёРµ.", imageUrl);
+      await respondWithModel(chatId, "Опиши изображение.", imageUrl);
     } else if (message.document) {
       await handleDocument(chatId, message.document);
     } else {
-      await sendMessage(chatId, "РЇ РїРѕРЅРёРјР°СЋ С‚РѕР»СЊРєРѕ С‚РµРєСЃС‚, РіРѕР»РѕСЃ, С„РѕС‚Рѕ Рё РґРѕРєСѓРјРµРЅС‚С‹.");
+      await sendMessage(
+        chatId,
+        "Я понимаю только текст, голос, фото и документы."
+      );
     }
   } catch (error) {
     console.error(error);
-    await sendMessage(chatId, "РџСЂРѕРёР·РѕС€Р»Р° РѕС€РёР±РєР°. РџРѕРїСЂРѕР±СѓР№С‚Рµ СЃРЅРѕРІР°.");
+    await sendMessage(chatId, "Произошла ошибка. Попробуйте снова.");
   }
 
   return Response.json({ ok: true });
