@@ -67,7 +67,7 @@ async function synthesizeVoice(text: string) {
     model: env.OPENAI_TTS_MODEL,
     voice: "alloy",
     input: text,
-    format: "mp3",
+    response_format: "mp3",
   });
 
   return await speech.arrayBuffer();
