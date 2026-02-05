@@ -89,7 +89,7 @@ function makeMessage(
   content: ResponseInputMessageContentList
 ): ResponseInputMessageItem {
   return {
-    id: randomUUID(),
+    id: `msg_${randomUUID()}`,
     type: "message",
     role,
     content,
