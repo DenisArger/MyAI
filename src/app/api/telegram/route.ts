@@ -1,0 +1,235 @@
+import { openai } from "@/lib/openai";
+import { env, requireEnv } from "@/lib/env";
+import { addFileToVectorStore } from "@/lib/vector-store";
+import { loadRecentMessages, saveMessage } from "@/lib/memory";
+import {
+  downloadFile,
+  getFile,
+  getFileUrl,
+  sendMessage,
+  sendVoice,
+} from "@/lib/telegram";
+import { uploadToStorage } from "@/lib/storage";
+
+export const runtime = "nodejs";
+
+type TelegramUpdate = {
+  update_id: number;
+  message?: TelegramMessage;
+};
+
+type TelegramMessage = {
+  message_id: number;
+  chat: { id: number; type: string };
+  text?: string;
+  voice?: { file_id: string; mime_type?: string; duration?: number };
+  photo?: Array<{ file_id: string; file_size?: number }>;
+  document?: {
+    file_id: string;
+    file_name?: string;
+    mime_type?: string;
+  };
+};
+
+function pickLargestPhoto(
+  photos: Array<{ file_id: string; file_size?: number }>
+) {
+  return photos.reduce((best, photo) => {
+    if (!best) return photo;
+    return (photo.file_size ?? 0) > (best.file_size ?? 0) ? photo : best;
+  }, photos[0]);
+}
+
+function getSystemPrompt() {
+  return [
+    "Ты дружелюбный ассистент в Telegram.",
+    "Отвечай кратко и по делу.",
+    "Если пользователь прислал голос, отвечай текстом и голосом.",
+  ].join(" ");
+}
+
+async function transcribeVoice(fileUrl: string, mimeType?: string) {
+  const bytes = await downloadFile(fileUrl);
+  const file = new File([bytes], "voice.ogg", {
+    type: mimeType || "audio/ogg",
+  });
+
+  const transcript = await openai.audio.transcriptions.create({
+    model: env.OPENAI_STT_MODEL,
+    file,
+  });
+
+  return transcript.text;
+}
+
+async function synthesizeVoice(text: string) {
+  const speech = await openai.audio.speech.create({
+    model: env.OPENAI_TTS_MODEL,
+    voice: "alloy",
+    input: text,
+    format: "mp3",
+  });
+
+  return await speech.arrayBuffer();
+}
+
+async function respondWithModel(
+  chatId: number,
+  userText: string,
+  imageUrl?: string,
+  respondWithVoice = false
+) {
+  await saveMessage(chatId, "user", userText);
+
+  const history = await loadRecentMessages(chatId, 20);
+
+  const input = [
+    {
+      role: "system",
+      content: [{ type: "input_text", text: getSystemPrompt() }],
+    },
+    ...history.map((msg) => ({
+      role: msg.role,
+      content: [{ type: "input_text", text: msg.content }],
+    })),
+    {
+      role: "user",
+      content: [
+        { type: "input_text", text: userText },
+        ...(imageUrl
+          ? [{ type: "input_image", image_url: imageUrl, detail: "auto" }]
+          : []),
+      ],
+    },
+  ];
+
+  const response = await openai.responses.create({
+    model: env.OPENAI_CHAT_MODEL,
+    input,
+    tools: env.OPENAI_VECTOR_STORE_ID ? [{ type: "file_search" }] : [],
+    tool_resources: env.OPENAI_VECTOR_STORE_ID
+      ? { file_search: { vector_store_ids: [env.OPENAI_VECTOR_STORE_ID] } }
+      : undefined,
+  });
+
+  const replyText =
+    response.output_text?.trim() ||
+    response.output
+      .flatMap((item) => item.content ?? [])
+      .map((content) => {
+        if ("text" in content && content.text) return content.text;
+        return "";
+      })
+      .join("")
+      .trim() ||
+    "Не удалось получить ответ от модели.";
+
+  await saveMessage(chatId, "assistant", replyText);
+  await sendMessage(chatId, replyText);
+
+  if (respondWithVoice) {
+    const audio = await synthesizeVoice(replyText);
+    await sendVoice(chatId, audio);
+  }
+}
+
+async function handleDocument(
+  chatId: number,
+  document: NonNullable<TelegramMessage["document"]>
+) {
+  const fileInfo = await getFile(document.file_id);
+  if (!fileInfo.file_path) {
+    throw new Error("Telegram file_path missing for document.");
+  }
+
+  const fileUrl = getFileUrl(fileInfo.file_path);
+  const bytes = await downloadFile(fileUrl);
+  const fileName = document.file_name ?? "document.bin";
+  const storagePath = `${chatId}/${Date.now()}-${fileName}`;
+
+  const publicUrl = await uploadToStorage(
+    storagePath,
+    bytes,
+    document.mime_type ?? "application/octet-stream"
+  );
+
+  const openAiFile = await openai.files.create({
+    file: new File([bytes], fileName, {
+      type: document.mime_type ?? "application/octet-stream",
+    }),
+    purpose: "assistants",
+  });
+
+  await addFileToVectorStore(openAiFile.id);
+
+  await sendMessage(
+    chatId,
+    `Документ сохранен. Ссылка: ${publicUrl}\nМожно задавать вопросы по содержимому.`
+  );
+}
+
+export async function POST(request: Request) {
+  requireEnv("TELEGRAM_BOT_TOKEN");
+  requireEnv("OPENAI_API_KEY");
+  requireEnv("SUPABASE_URL");
+  requireEnv("SUPABASE_SERVICE_ROLE_KEY");
+
+  const secret = env.TELEGRAM_WEBHOOK_SECRET;
+  if (secret) {
+    const headerSecret = request.headers.get("x-telegram-bot-api-secret-token");
+    if (headerSecret !== secret) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+  }
+
+  const update = (await request.json()) as TelegramUpdate;
+  const message = update.message;
+
+  if (!message) {
+    return Response.json({ ok: true });
+  }
+
+  const chatId = message.chat.id;
+
+  try {
+    if (message.text) {
+      await respondWithModel(chatId, message.text);
+    } else if (message.voice) {
+      const fileInfo = await getFile(message.voice.file_id);
+      if (!fileInfo.file_path) {
+        throw new Error("Telegram file_path missing for voice.");
+      }
+      const fileUrl = getFileUrl(fileInfo.file_path);
+
+      let transcript: string;
+      try {
+        transcript = await transcribeVoice(fileUrl, message.voice.mime_type);
+      } catch (err) {
+        await sendMessage(
+          chatId,
+          "Не удалось распознать голос. Попробуйте отправить аудио в формате mp3, wav или m4a."
+        );
+        throw err;
+      }
+
+      await respondWithModel(chatId, transcript, undefined, true);
+    } else if (message.photo && message.photo.length > 0) {
+      const bestPhoto = pickLargestPhoto(message.photo);
+      const fileInfo = await getFile(bestPhoto.file_id);
+      if (!fileInfo.file_path) {
+        throw new Error("Telegram file_path missing for photo.");
+      }
+      const imageUrl = getFileUrl(fileInfo.file_path);
+      await respondWithModel(chatId, "Опиши изображение.", imageUrl);
+    } else if (message.document) {
+      await handleDocument(chatId, message.document);
+    } else {
+      await sendMessage(chatId, "Я понимаю только текст, голос, фото и документы.");
+    }
+  } catch (error) {
+    console.error(error);
+    await sendMessage(chatId, "Произошла ошибка. Попробуйте снова.");
+  }
+
+  return Response.json({ ok: true });
+}

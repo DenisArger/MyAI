@@ -1,36 +1,48 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Telegram Bot + OpenAI + Supabase (Next.js)
 
-## Getting Started
-
-First, run the development server:
-
+## Quick Start
+1. Install deps:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Create `.env.local` (copy from `.env.example`) and fill:
+```
+OPENAI_API_KEY=...
+OPENAI_CHAT_MODEL=gpt-4o-mini
+OPENAI_STT_MODEL=gpt-4o-mini-transcribe
+OPENAI_TTS_MODEL=gpt-4o-mini-tts
+OPENAI_VECTOR_STORE_ID=
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_WEBHOOK_SECRET=...
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+SUPABASE_URL=...
+SUPABASE_SERVICE_ROLE_KEY=...
+SUPABASE_STORAGE_BUCKET=telegram-bot
+```
 
-## Learn More
+3. Supabase:
+- Create a project and run SQL from `docs/supabase.sql`.
+- Create a storage bucket (public): `telegram-bot`.
 
-To learn more about Next.js, take a look at the following resources:
+4. Run dev server:
+```bash
+npm run dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+5. Configure Telegram webhook:
+```
+https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook?url=<YOUR_VERCEL_URL>/api/telegram&secret_token=<TELEGRAM_WEBHOOK_SECRET>
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Features
+- Text chat with OpenAI Responses API
+- Full history stored in Supabase Postgres
+- Voice messages: STT + TTS
+- Images: vision input
+- Documents: stored in Supabase Storage and indexed into OpenAI vector store (optional)
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Notes
+- Telegram voice messages are OGG/OPUS. If transcription fails, send audio as mp3/wav/m4a.
+- For document Q&A, set `OPENAI_VECTOR_STORE_ID`.
