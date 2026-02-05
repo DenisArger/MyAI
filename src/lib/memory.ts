@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "./supabase";
 
-export type ChatRole = "user" | "assistant" | "system";
+export type ChatRole = "user" | "assistant" | "system" | "developer";
 
 export async function saveMessage(
   chatId: number,

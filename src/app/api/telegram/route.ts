@@ -1,7 +1,13 @@
-import { openai } from "@/lib/openai";
+﻿import { openai } from "@/lib/openai";
+import { randomUUID } from "node:crypto";
+import type {
+  ResponseInputMessageItem,
+  ResponseInputMessageContentList,
+} from "openai/resources/responses/responses";
 import { env, requireEnv } from "@/lib/env";
 import { addFileToVectorStore } from "@/lib/vector-store";
 import { loadRecentMessages, saveMessage } from "@/lib/memory";
+import type { ChatRole } from "@/lib/memory";
 import {
   downloadFile,
   getFile,
@@ -42,9 +48,9 @@ function pickLargestPhoto(
 
 function getSystemPrompt() {
   return [
-    "Ты дружелюбный ассистент в Telegram.",
-    "Отвечай кратко и по делу.",
-    "Если пользователь прислал голос, отвечай текстом и голосом.",
+    "РўС‹ РґСЂСѓР¶РµР»СЋР±РЅС‹Р№ Р°СЃСЃРёСЃС‚РµРЅС‚ РІ Telegram.",
+    "РћС‚РІРµС‡Р°Р№ РєСЂР°С‚РєРѕ Рё РїРѕ РґРµР»Сѓ.",
+    "Р•СЃР»Рё РїРѕР»СЊР·РѕРІР°С‚РµР»СЊ РїСЂРёСЃР»Р°Р» РіРѕР»РѕСЃ, РѕС‚РІРµС‡Р°Р№ С‚РµРєСЃС‚РѕРј Рё РіРѕР»РѕСЃРѕРј.",
   ].join(" ");
 }
 
@@ -73,6 +79,23 @@ async function synthesizeVoice(text: string) {
   return await speech.arrayBuffer();
 }
 
+function toInputRole(role: ChatRole): "user" | "system" | "developer" {
+  if (role === "assistant") return "developer";
+  return role;
+}
+
+function makeMessage(
+  role: "user" | "system" | "developer",
+  content: ResponseInputMessageContentList
+): ResponseInputMessageItem {
+  return {
+    id: randomUUID(),
+    type: "message",
+    role,
+    content,
+  };
+}
+
 async function respondWithModel(
   chatId: number,
   userText: string,
@@ -83,45 +106,39 @@ async function respondWithModel(
 
   const history = await loadRecentMessages(chatId, 20);
 
-  const input = [
-    {
-      role: "system",
-      content: [{ type: "input_text", text: getSystemPrompt() }],
-    },
-    ...history.map((msg) => ({
-      role: msg.role,
-      content: [{ type: "input_text", text: msg.content }],
-    })),
-    {
-      role: "user",
-      content: [
+  const systemContent: ResponseInputMessageContentList = [
+    { type: "input_text", text: getSystemPrompt() },
+  ];
+
+  const userContent: ResponseInputMessageContentList = imageUrl
+    ? [
         { type: "input_text", text: userText },
-        ...(imageUrl
-          ? [{ type: "input_image", image_url: imageUrl, detail: "auto" }]
-          : []),
-      ],
-    },
+        { type: "input_image", image_url: imageUrl, detail: "auto" },
+      ]
+    : [{ type: "input_text", text: userText }];
+
+  const historyItems = history.map((msg) =>
+    makeMessage(toInputRole(msg.role), [
+      { type: "input_text", text: msg.content },
+    ])
+  );
+
+  const input: ResponseInputMessageItem[] = [
+    makeMessage("system", systemContent),
+    ...historyItems,
+    makeMessage("user", userContent),
   ];
 
   const response = await openai.responses.create({
     model: env.OPENAI_CHAT_MODEL,
     input,
-    tools: env.OPENAI_VECTOR_STORE_ID ? [{ type: "file_search" }] : [],
-    tool_resources: env.OPENAI_VECTOR_STORE_ID
-      ? { file_search: { vector_store_ids: [env.OPENAI_VECTOR_STORE_ID] } }
-      : undefined,
+    tools: env.OPENAI_VECTOR_STORE_ID
+      ? [{ type: "file_search", vector_store_ids: [env.OPENAI_VECTOR_STORE_ID] }]
+      : [],
   });
 
-  const replyText =
+    const replyText =
     response.output_text?.trim() ||
-    response.output
-      .flatMap((item) => item.content ?? [])
-      .map((content) => {
-        if ("text" in content && content.text) return content.text;
-        return "";
-      })
-      .join("")
-      .trim() ||
     "Не удалось получить ответ от модели.";
 
   await saveMessage(chatId, "assistant", replyText);
@@ -164,7 +181,7 @@ async function handleDocument(
 
   await sendMessage(
     chatId,
-    `Документ сохранен. Ссылка: ${publicUrl}\nМожно задавать вопросы по содержимому.`
+    `Р”РѕРєСѓРјРµРЅС‚ СЃРѕС…СЂР°РЅРµРЅ. РЎСЃС‹Р»РєР°: ${publicUrl}response.output_text?.trim() || nРњРѕР¶РЅРѕ Р·Р°РґР°РІР°С‚СЊ РІРѕРїСЂРѕСЃС‹ РїРѕ СЃРѕРґРµСЂР¶РёРјРѕРјСѓ.`
   );
 }
 
@@ -207,7 +224,7 @@ export async function POST(request: Request) {
       } catch (err) {
         await sendMessage(
           chatId,
-          "Не удалось распознать голос. Попробуйте отправить аудио в формате mp3, wav или m4a."
+          "РќРµ СѓРґР°Р»РѕСЃСЊ СЂР°СЃРїРѕР·РЅР°С‚СЊ РіРѕР»РѕСЃ. РџРѕРїСЂРѕР±СѓР№С‚Рµ РѕС‚РїСЂР°РІРёС‚СЊ Р°СѓРґРёРѕ РІ С„РѕСЂРјР°С‚Рµ mp3, wav РёР»Рё m4a."
         );
         throw err;
       }
@@ -220,16 +237,19 @@ export async function POST(request: Request) {
         throw new Error("Telegram file_path missing for photo.");
       }
       const imageUrl = getFileUrl(fileInfo.file_path);
-      await respondWithModel(chatId, "Опиши изображение.", imageUrl);
+      await respondWithModel(chatId, "РћРїРёС€Рё РёР·РѕР±СЂР°Р¶РµРЅРёРµ.", imageUrl);
     } else if (message.document) {
       await handleDocument(chatId, message.document);
     } else {
-      await sendMessage(chatId, "Я понимаю только текст, голос, фото и документы.");
+      await sendMessage(chatId, "РЇ РїРѕРЅРёРјР°СЋ С‚РѕР»СЊРєРѕ С‚РµРєСЃС‚, РіРѕР»РѕСЃ, С„РѕС‚Рѕ Рё РґРѕРєСѓРјРµРЅС‚С‹.");
     }
   } catch (error) {
     console.error(error);
-    await sendMessage(chatId, "Произошла ошибка. Попробуйте снова.");
+    await sendMessage(chatId, "РџСЂРѕРёР·РѕС€Р»Р° РѕС€РёР±РєР°. РџРѕРїСЂРѕР±СѓР№С‚Рµ СЃРЅРѕРІР°.");
   }
 
   return Response.json({ ok: true });
 }
+
+
+
