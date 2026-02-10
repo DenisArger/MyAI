@@ -248,6 +248,19 @@ export async function POST(request: Request) {
     }
   } catch (error) {
     console.error(error);
+    const status =
+      typeof error === "object" && error && "status" in error
+        ? Number((error as { status?: number }).status)
+        : undefined;
+
+    if (status === 429) {
+      await sendMessage(
+        chatId,
+        "Сейчас лимит OpenAI исчерпан. Попробуйте позже."
+      );
+      return Response.json({ ok: true });
+    }
+
     await sendMessage(chatId, "Произошла ошибка. Попробуйте снова.");
   }
 
