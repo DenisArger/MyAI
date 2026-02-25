@@ -1,4 +1,5 @@
 # MyAI
+[![CI](https://github.com/DenisArger/MyAI/actions/workflows/ci.yml/badge.svg)](https://github.com/DenisArger/MyAI/actions/workflows/ci.yml)
 
 ## English
 ## Problem
