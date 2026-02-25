@@ -1,6 +1,6 @@
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
 
 test('env example contains required keys', () => {
   const env = fs.readFileSync('.env.example', 'utf8');
