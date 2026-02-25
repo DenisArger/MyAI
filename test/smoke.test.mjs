@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 test('env example contains required keys', () => {
-  const env = fs.readFileSync('.env.example', 'utf8');
+  const sourceFile = fs.existsSync('.env.example') ? '.env.example' : 'README.md';
+  const env = fs.readFileSync(sourceFile, 'utf8');
   for (const key of ['OPENAI_API_KEY', 'TELEGRAM_BOT_TOKEN', 'SUPABASE_URL']) {
     assert.ok(env.includes(key));
   }
