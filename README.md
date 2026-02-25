@@ -1,48 +1,75 @@
-# Telegram Bot + OpenAI + Supabase (Next.js)
+# MyAI
 
-## Quick Start
-1. Install deps:
+## English
+## Problem
+Telegram bots need AI features (chat, voice, files) with persistent history and manageable backend integration.
+## Solution
+MyAI is a Next.js service integrating Telegram, OpenAI, and Supabase for conversational workflows and media/document processing.
+## Tech Stack
+- Node.js, TypeScript
+- Next.js
+- OpenAI API
+- Supabase (Postgres + Storage)
+- Telegram Bot API
+## Architecture
+```text
+app/
+api/
+docs/
+package.json
+```
+```mermaid
+flowchart TD
+  A[Telegram User] --> B[Webhook API]
+  B --> C[OpenAI API]
+  B --> D[Supabase Postgres]
+  B --> E[Supabase Storage]
+```
+## Features
+- Text chat with AI
+- Voice STT/TTS flows
+- Image/document processing
+- Chat history persistence in Supabase
+## How to Run
 ```bash
 npm install
-```
-
-2. Create `.env.local` (copy from `.env.example`) and fill:
-```
-OPENAI_API_KEY=...
-OPENAI_CHAT_MODEL=gpt-4o-mini
-OPENAI_STT_MODEL=gpt-4o-mini-transcribe
-OPENAI_TTS_MODEL=gpt-4o-mini-tts
-OPENAI_VECTOR_STORE_ID=
-
-TELEGRAM_BOT_TOKEN=...
-TELEGRAM_WEBHOOK_SECRET=...
-
-SUPABASE_URL=...
-SUPABASE_SERVICE_ROLE_KEY=...
-SUPABASE_STORAGE_BUCKET=telegram-bot
-```
-
-3. Supabase:
-- Create a project and run SQL from `docs/supabase.sql`.
-- Create a storage bucket (public): `telegram-bot`.
-
-4. Run dev server:
-```bash
+cp .env.example .env.local
 npm run dev
 ```
 
-5. Configure Telegram webhook:
+## Русский
+## Проблема
+Telegram-боту с AI нужны чат, голос и работа с файлами с сохранением истории и надежной backend-интеграцией.
+## Решение
+MyAI — это сервис на Next.js с интеграцией Telegram, OpenAI и Supabase для диалогов и обработки медиа/документов.
+## Стек
+- Node.js, TypeScript
+- Next.js
+- OpenAI API
+- Supabase (Postgres + Storage)
+- Telegram Bot API
+## Архитектура
+```text
+app/
+api/
+docs/
+package.json
 ```
-https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook?url=<YOUR_VERCEL_URL>/api/telegram&secret_token=<TELEGRAM_WEBHOOK_SECRET>
+```mermaid
+flowchart TD
+  A[Пользователь Telegram] --> B[Webhook API]
+  B --> C[OpenAI API]
+  B --> D[Supabase Postgres]
+  B --> E[Supabase Storage]
 ```
-
-## Features
-- Text chat with OpenAI Responses API
-- Full history stored in Supabase Postgres
-- Voice messages: STT + TTS
-- Images: vision input
-- Documents: stored in Supabase Storage and indexed into OpenAI vector store (optional)
-
-## Notes
-- Telegram voice messages are OGG/OPUS. If transcription fails, send audio as mp3/wav/m4a.
-- For document Q&A, set `OPENAI_VECTOR_STORE_ID`.
+## Возможности
+- AI-чат
+- Голосовые STT/TTS сценарии
+- Обработка изображений и документов
+- Сохранение истории диалогов в Supabase
+## Как запустить
+```bash
+npm install
+cp .env.example .env.local
+npm run dev
+```
